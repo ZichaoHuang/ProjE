@@ -492,7 +492,7 @@ def main(_):
     parser.add_argument("--worker", dest='n_worker', type=int, help="Evaluation worker", default=3)
     parser.add_argument("--generator", dest='n_generator', type=int, help="Data generator", default=10)
     parser.add_argument("--eval_batch", dest="eval_batch", type=int, help="Evaluation batch size", default=500)
-    parser.add_argument("--save_dir", dest='save_dir', type=str, help="Model path", default='./')
+    parser.add_argument("--save_dir", dest='save_dir', type=str, help="Model path", default='./ProjE_ckpt/')
     parser.add_argument("--load_model", dest='load_model', type=str, help="Model file", default="")
     parser.add_argument("--save_per", dest='save_per', type=int, help="Save per x iteration", default=10)
     parser.add_argument("--eval_per", dest='eval_per', type=int, help="Evaluate every x iteration", default=1)
@@ -521,7 +521,8 @@ def main(_):
     test_input, test_head, test_tail = test_ops(model)
 
     with tf.Session() as session:
-        tf.initialize_all_variables().run()
+        # tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         saver = tf.train.Saver()
 

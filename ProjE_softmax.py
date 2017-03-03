@@ -323,34 +323,38 @@ class ProjE:
 
             ent_mat = tf.transpose(self.__ent_embedding)
 
-            if self.__combination_method.lower() == 'simple':
+            # if self.__combination_method.lower() == 'simple':
 
-                # predict tails
-                hr = h * self.__hr_weighted_vector[:self.__embed_dim] + r * self.__hr_weighted_vector[
-                                                                            self.__embed_dim:]
+            # predict tails
+            hr = h * self.__hr_weighted_vector[:self.__embed_dim] + r * self.__hr_weighted_vector[
+                                                                        self.__embed_dim:]
 
-                hrt_res = tf.matmul(tf.tanh(hr + self.__hr_combination_bias), ent_mat)
-                _, tail_ids = tf.nn.top_k(hrt_res, k=self.__n_entity)
+            hrt_res = tf.matmul(tf.tanh(hr + self.__hr_combination_bias), ent_mat)
+            _, tail_ids = tf.nn.top_k(hrt_res, k=self.__n_entity)
 
-                # predict heads
+            hr_score = tf.tanh(hr + self.__hr_combination_bias)
 
-                tr = t * self.__tr_weighted_vector[:self.__embed_dim] + r * self.__tr_weighted_vector[self.__embed_dim:]
+            # predict heads
 
-                trh_res = tf.matmul(tf.tanh(tr + self.__tr_combination_bias), ent_mat)
-                _, head_ids = tf.nn.top_k(trh_res, k=self.__n_entity)
+            tr = t * self.__tr_weighted_vector[:self.__embed_dim] + r * self.__tr_weighted_vector[self.__embed_dim:]
 
-            else:
+            trh_res = tf.matmul(tf.tanh(tr + self.__tr_combination_bias), ent_mat)
+            _, head_ids = tf.nn.top_k(trh_res, k=self.__n_entity)
 
-                hr = tf.matmul(tf.concat(1, [h, r]), self.__hr_combination_matrix)
-                hrt_res = (tf.matmul(tf.tanh(hr + self.__hr_combination_bias), ent_mat))
-                _, tail_ids = tf.nn.top_k(hrt_res, k=self.__n_entity)
+            tr_score = tf.tanh(tr + self.__tr_combination_bias)
 
-                tr = tf.matmul(tf.concat(1, [t, r]), self.__tr_combination_matrix)
-                trh_res = (tf.matmul(tf.tanh(tr + self.__tr_combination_bias), ent_mat))
+            # else:
+            #
+            #     hr = tf.matmul(tf.concat(1, [h, r]), self.__hr_combination_matrix)
+            #     hrt_res = (tf.matmul(tf.tanh(hr + self.__hr_combination_bias), ent_mat))
+            #     _, tail_ids = tf.nn.top_k(hrt_res, k=self.__n_entity)
+            #
+            #     tr = tf.matmul(tf.concat(1, [t, r]), self.__tr_combination_matrix)
+            #     trh_res = (tf.matmul(tf.tanh(tr + self.__tr_combination_bias), ent_mat))
+            #
+            #     _, head_ids = tf.nn.top_k(trh_res, k=self.__n_entity)
 
-                _, head_ids = tf.nn.top_k(trh_res, k=self.__n_entity)
-
-            return head_ids, tail_ids
+            return head_ids, tail_ids, hr_score, tr_score
 
 
 def train_ops(model: ProjE, learning_rate=0.1, optimizer_str='gradient', regularizer_weight=1.0):
@@ -381,9 +385,9 @@ def train_ops(model: ProjE, learning_rate=0.1, optimizer_str='gradient', regular
 def test_ops(model: ProjE):
     with tf.device('/cpu'):
         test_input = tf.placeholder(tf.int32, [None, 3])
-        head_ids, tail_ids = model.test(test_input)
+        head_ids, tail_ids, hr_score, tr_score = model.test(test_input)
 
-    return test_input, head_ids, tail_ids
+    return test_input, head_ids, tail_ids, hr_score, tr_score
 
 
 def worker_func(in_queue: JoinableQueue, out_queue: Queue, hr_t, tr_h):
@@ -515,10 +519,11 @@ def main(_):
     train_loss, train_op = train_ops(model, learning_rate=args.lr,
                                      optimizer_str=args.optimizer,
                                      regularizer_weight=args.loss_weight)
-    test_input, test_head, test_tail = test_ops(model)
+    test_input, test_head, test_tail, hr_score, tr_score = test_ops(model)
 
     with tf.Session() as session:
-        tf.initialize_all_variables().run()
+        # tf.initialize_all_variables().run()
+        tf.global_variables_initializer().run()
 
         saver = tf.train.Saver()
 
@@ -555,11 +560,20 @@ def main(_):
             evaluation_count = 0
 
             for testing_data in data_func(batch_size=args.eval_batch):
-                head_pred, tail_pred = session.run([test_head, test_tail],
-                                                   {test_input: testing_data})
+                head_pred, tail_pred, head_score, tail_score = session.run([test_head, test_tail, hr_score, tr_score],
+                                                                           {test_input: testing_data})
 
                 evaluation_queue.put((testing_data, head_pred, tail_pred))
                 evaluation_count += 1
+
+                # print score to file
+                if evaluation_count <= 10:
+                    with open('./score/initialization/score{}.txt'.format(evaluation_count), mode='w') as score_file:
+                        score_file.write('[{}] INITIALIZATION [HEAD SCORE]\n'.format(test_type))
+                        print(head_score, file=score_file)
+                        score_file.write('\n\n')
+                        score_file.write('[{}] INITIALIZATION [TAIL SCORE]\n'.format(test_type))
+                        print(tail_score, file=score_file)
 
             for i in range(args.n_worker):
                 evaluation_queue.put(None)
@@ -643,11 +657,22 @@ def main(_):
                     evaluation_count = 0
 
                     for testing_data in data_func(batch_size=args.eval_batch):
-                        head_pred, tail_pred = session.run([test_head, test_tail],
-                                                           {test_input: testing_data})
+                        head_pred, tail_pred, head_score, tail_score = session.run(
+                            [test_head, test_tail, hr_score, tr_score],
+                            {test_input: testing_data})
 
                         evaluation_queue.put((testing_data, head_pred, tail_pred))
                         evaluation_count += 1
+
+                        # print score to file
+                        if evaluation_count <= 10:
+                            with open('./score/iter{}/score{}.txt'.format(n_iter, evaluation_count),
+                                      mode='w') as score_file:
+                                score_file.write('[{}] INITIALIZATION [HEAD SCORE]\n'.format(test_type))
+                                print(head_score, file=score_file)
+                                score_file.write('\n\n')
+                                score_file.write('[{}] INITIALIZATION [TAIL SCORE]\n'.format(test_type))
+                                print(tail_score, file=score_file)
 
                     for i in range(args.n_worker):
                         evaluation_queue.put(None)

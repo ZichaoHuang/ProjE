@@ -73,7 +73,7 @@ class ProjE:
         start = 0
         while start < n_triple:
             end = min(start + batch_size, n_triple)
-            yield self.__test_triple[start:end, :]
+            yield self.__valid_triple[start:end, :]
             start = end
 
     def corrupted_training(self, htr):
@@ -568,12 +568,13 @@ def main(_):
 
                 # print score to file
                 if evaluation_count <= 10:
-                    with open('./score/initialization/score{}.txt'.format(evaluation_count), mode='w') as score_file:
+                    with open('./score/initialization/score{}.txt'.format(evaluation_count), mode='a') as score_file:
                         score_file.write('[{}] INITIALIZATION [HEAD SCORE]\n'.format(test_type))
                         print(head_score, file=score_file)
                         score_file.write('\n\n')
                         score_file.write('[{}] INITIALIZATION [TAIL SCORE]\n'.format(test_type))
                         print(tail_score, file=score_file)
+                        score_file.write('\n\n')
 
             for i in range(args.n_worker):
                 evaluation_queue.put(None)
@@ -667,12 +668,13 @@ def main(_):
                         # print score to file
                         if evaluation_count <= 10:
                             with open('./score/iter{}/score{}.txt'.format(n_iter, evaluation_count),
-                                      mode='w') as score_file:
-                                score_file.write('[{}] INITIALIZATION [HEAD SCORE]\n'.format(test_type))
+                                      mode='a') as score_file:
+                                score_file.write('[{}] ITER{} [HEAD SCORE]\n'.format(test_type, n_iter))
                                 print(head_score, file=score_file)
                                 score_file.write('\n\n')
-                                score_file.write('[{}] INITIALIZATION [TAIL SCORE]\n'.format(test_type))
+                                score_file.write('[{}] ITER{} [TAIL SCORE]\n'.format(test_type, n_iter))
                                 print(tail_score, file=score_file)
+                                score_file.write('\n\n')
 
                     for i in range(args.n_worker):
                         evaluation_queue.put(None)
